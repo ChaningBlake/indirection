@@ -4,7 +4,8 @@
 ## Role/filler recall task
 ## 2017 Mike Jovanovich
 ##
-## In this version only one random role is requested after the store trials
+## Actions must be learned for this model, since there is no output gating.
+## The signal to drive action choice is all of WM, along with a prompt for the role.
 ##
 #############################################################################
 
@@ -419,12 +420,11 @@ while( cur_task <= max_tasks ) {
     }
 
     #############################################################################
-    ## Task wrapup
+    ## Output prints
     #############################################################################
 
-    ## Debug prints
-    if( FALSE ) {
-    #if( cur_task %% 200 == 0 ) {
+    #if( FALSE ) {
+    if( cur_task %% 200 == 0 ) {
         cat(sprintf('Tasks Complete: %d\n',cur_task))
         cat(sprintf('Block Accuracy: %.2f\n',(block_tasks_correct/200)*100))
 
@@ -439,31 +439,38 @@ while( cur_task <= max_tasks ) {
         cat('\n')
     }
 
-    #if( FALSE ) {
-    if( cur_task %% 200 == 0 ) {
+    if( FALSE ) {
+    #if( cur_task %% 200 == 0 ) {
         ## For each stripe output open and close values
-        for( r in 1:nroles ) {
-            for( s in 1:nstripes ) {
+        for( s in 1:nstripes ) {
+            for( r in 1:nroles ) {
                 for( o in 1:2 ) {
                     if( state_cd == 'C' ) {
                         state_wm <- convolve(convolve(ops[,o],roles[,r]),cur_wm)
                     } else {
                         state_wm <- convolve(cnorm(ops[,o] + roles[,r]),cur_wm)
                     }
-                    cat(sprintf('%.2f',nndot(W_m[,s],state_wm)+bias_m))
-                    if( s != nstripes || o != 2 || r != nroles )
-                        cat(',')
+                    for( g in 1:2 ) {
+                        cat(sprintf('%.2f',nndot(W_m[,s],convolve(state_wm,gono[,g]))+bias_m))
+                        if( s != nstripes || o != 2 || r != nroles || g != 2 )
+                            cat(',')
+                    }
                 }
             }
         }
         cat('\n')
     }
 
+    #############################################################################
+    ## Task wrapup
+    #############################################################################
+
     ## Increment task tally
     cur_task <- cur_task + 1
 }
 
 ## Print final results
+cat(sprintf('%d\n',cur_task))
 #cat(sprintf('Final Block Accuracy: %.2f\n',(block_tasks_correct/200)*100))
 
 #############################################################################
@@ -507,6 +514,6 @@ if(FALSE) {
     }
 
     ## Print final results
-    #cat(sprintf('Generalization Accuracy: %d\n',novel_tasks_correct))
-    cat(sprintf('%d\n',novel_tasks_correct))
+    cat(sprintf('Generalization Accuracy: %d\n',novel_tasks_correct))
+    #cat(sprintf('%d\n',novel_tasks_correct))
 } ## End generalization test

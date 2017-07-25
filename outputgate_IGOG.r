@@ -5,13 +5,11 @@
 ## 2017 Mike Jovanovich
 ##
 ## In this version OG sees WM after it has been update by IG within a timestep
-## This version assumes the action selection layer already knows what to do
-## based on output from WM; action selection is built-in, or 'pre-trained'
 ##
 #############################################################################
 
 ## Usage
-# Rscript outputgate.r 1 100000 3 10 3 C C D F F SG
+# Rscript outputgate.r 1 100000 3 10 3 C C D F
 
 #############################################################################
 ## Parameter initialization
@@ -24,7 +22,7 @@ require(Matrix)
 
 ## Build args dictionary
 argnames <- list('seed','ntasks','nstripes','nfillers','nroles','state_cd','sid_cd','interstripe_cd',
-  'use_sids_input','use_sids_output','gen_test')
+  'use_sids_input','use_sids_output')
 args <- commandArgs(trailingOnly = TRUE)
 
 ## Set the seed for repeatability
@@ -80,13 +78,13 @@ ops <- replicate(2,hrr(n,normalized=TRUE))
 
 ## Op code vectors
 ## To index: [,1] go, [,2] no go 
-gono <- replicate(2,hrr(n,normalized=TRUE))
+gono_m <- replicate(2,hrr(n,normalized=TRUE))
+gono_o <- replicate(2,hrr(n,normalized=TRUE))
 
 ## TD weight vectors
 ## A suffix of '_m' inicates relation to the maintenance layer NN
 ## To index: [,stripe]
-W_m <- replicate(nstripes,hrr(n,normalized=TRUE))
-W_o <- replicate(nstripes,hrr(n,normalized=TRUE))
+W_g <- replicate(nstripes,hrr(n,normalized=TRUE))
 
 ## Action weight vectors
 ## There are 'nfillers' output units for this network
@@ -97,20 +95,16 @@ W_a <- replicate(nfillers,hrr(n,normalized=TRUE))
 ## TD parameters
 default_reward <- 0.0
 success_reward <- 1.0
-bias_m <- 1.0
-bias_o <- 1.0
+bias_g <- 1.0
 bias_a <- 1.0
-gamma_m <- 1.0
-gamma_o <- 1.0
+gamma_g <- 1.0
 gamma_a <- 1.0
-lambda_m <- 0.9
-lambda_o <- 0.9
-lrate_m <- 0.1
-lrate_o <- 0.1
+lambda_g <- 0.9
+lrate_g <- 0.1
 lrate_a <- 0.1
+#ac_softmax_t <- .025    ## Higher temperatures will increase chance of random action
 ac_softmax_t <- .125    ## Higher temperatures will increase chance of random action
-epsilon_m <- .025
-epsilon_o <- .025
+epsilon_g <- .025
 
 ## Task parameters
 max_tasks <- as.integer(args[which(argnames=='ntasks')])
@@ -123,13 +117,7 @@ train_set_size <- 200
 test_set_size <- 100
 
 ## Choose testing protocol
-if( args[which(argnames=='gen_test')] == 'SG' ) {
-    sets <- standardGeneralization(nroles,nfillers,train_set_size,test_set_size)
-} else if( args[which(argnames=='gen_test')] == 'SA' ) {
-    sets <- spuriousAnticorrelation(nroles,nfillers,train_set_size,test_set_size)
-} else if( args[which(argnames=='gen_test')] == 'FC' ) {
-    sets <- fullCombinatorial(nroles,nfillers,train_set_size,test_set_size)
-}
+sets <- standardGeneralization(nroles,nfillers,train_set_size,test_set_size)
 
 #############################################################################
 ## softmax: The softmax function
@@ -161,18 +149,21 @@ softmax_select <- function(x) {
 #############################################################################
 ## selectAction:
 ##
-## If f_stripes_o has one and only one choice, that filler will be output
+## This function handles action selection. The hidden layer takes as input
+## working memory contents along with the role that is being queried.
+## The max output unit is used to determine trial correctness.
 ##
 #############################################################################
 selectAction <- function() {
 
-    if( length(which(f_stripes_o != 'I')) != 1 ) {
-        action = -1
-    } else {
-        action = as.integer(substring(f_stripes_o[which(f_stripes_o!='I')],2))
-    }
-
-    return( action )
+    ## Get NN output and output unit (action) with max value
+    output <- (apply(W_a,2,nndot,cur_wm_o) + bias_a)
+    action <- softmax_select(output)
+    
+    return(list(
+        val = output,
+        action = action
+    ))
 }
 
 #############################################################################
@@ -338,7 +329,7 @@ outputGate <- function(state) {
     }
 
 
-    ## Update WM_o contents 
+    ## Update WM_m contents 
     ## We are convolving the fill with the appropriate SID
     for( i in 1:nstripes ) {
         if( open[i] ) {
@@ -351,9 +342,7 @@ outputGate <- function(state) {
     if( interstripe_cd == 'D' ) {
         wm <- cnorm(apply(stripes_o,1,sum))
         if( is.nan(wm[1]) )
-            ## Change this depending on how we want 'nothing' to look for action selection
-            #wm <- hrr_o
-            wm <- hrr_z
+            wm <- hrr_o ## TODO: hrr_z?
     } else {
         wm <- mconvolve(stripes_o)
     }
@@ -362,6 +351,153 @@ outputGate <- function(state) {
         wm = wm,
         elig = elig,
         vals = vals,
+        f_stripes_o = f_stripes_o
+    ))
+}
+
+#############################################################################
+## inputOutputGate:
+##
+## This function handles gating for a single timestep/operation in the task.
+## At each timestep a stripe can either retain its contents or update with the 
+## provided filler. 
+##
+## Multiple stripes update in a single timestep.
+##
+#############################################################################
+inputOutputGate <- function(state,f=-1) {
+
+    ## Start with a blank slate
+    stripes_o <- replicate(nstripes,hrr_i)
+    f_stripes_o <- replicate(nstripes,'I')
+
+    ## Get NN output unit values
+    ## Note that state_wm is for the previous timestep
+    ## We will return this to use in the eligibility trace
+    state_wm <- convolve(state,cur_wm_m)
+
+    ## Build to matrix of eligility trace vectors that will be returned
+    ## for TD updates; default to no go
+    elig <- replicate(nstripes,hrr_z)
+    vals <- rep(-999.9,nstripes)
+    open_m <- rep(FALSE,nstripes)
+    open_o <- rep(FALSE,nstripes)
+
+    ## Loop through each stripe; each gate (input or output) can
+    ## either be open or closed (1 or 2)
+    for( s in 1:nstripes) {
+
+        ## Epsilon soft policy
+        r <- runif(1)
+        if( r < epsilon_g ) {
+            m <- 2
+            o <- 2
+
+            ## Pick a random open or close state for m
+            ## Keep IG closed on no fill trials to keep a level playing field with other model
+            if( f != -1 ) {
+                r <- runif(1)
+                if( r > .5 ) {
+                    m <- 1
+                }
+            }
+            ## Pick a random open or close state for o
+            r <- runif(1)
+            if( r > .5 ) {
+                m <- 1
+            }
+
+            state_wm_gono <- convolve(convolve(state_wm,gono_m[,m]),gono_o[,o])
+            temp_val <- nndot(W_g[,s],state_wm_gono) + bias_g
+            vals[s] <- temp_val
+            elig[,s] <- state_wm_gono
+            open_m[s] <- m == 1
+            open_o[s] <- o == 1
+
+        } else {
+            for( m in 1:2 ) {
+                ## Keep IG closed on no fill trials to keep a level playing field with other model
+                if( f == -1 && m == 1 )
+                    next
+                for( o in 1:2 ) {
+                    state_wm_gono <- convolve(convolve(state_wm,gono_m[,m]),gono_o[,o])
+                    temp_val <- nndot(W_g[,s],state_wm_gono) + bias_g
+
+                    if( temp_val > vals[s] ) {
+                        vals[s] <- temp_val
+                        elig[,s] <- state_wm_gono
+                        open_m[s] <- m == 1
+                        open_o[s] <- o == 1
+                    }
+                }
+            }
+        }
+    }
+
+    ## Update WM_m contents 
+    ## We are convolving the fill with the appropriate SID
+    for( i in 1:nstripes ) {
+        if( open_m[i] ) {
+            if( f == -1 ) {
+                stripes_m[,i] <- hrr_i
+                stripes_mo[,i] <- hrr_i
+                f_stripes_m[i] <- 'I'
+            } else {
+                if( sid_cd == 'C' ) {
+                    if( use_sids_input )
+                        stripes_m[,i] <- convolve(fillers[,f],sids[,i])
+                    if( use_sids_output )
+                        stripes_mo[,i] <- convolve(fillers[,f],sids[,i])
+                } else {
+                    if( use_sids_input )
+                        stripes_m[,i] <- cnorm(fillers[,f]+sids[,i])
+                    if( use_sids_output )
+                        stripes_mo[,i] <- cnorm(fillers[,f]+sids[,i])
+                }
+                if( !use_sids_input )
+                    stripes_m[,i] <- fillers[,f]
+                if( !use_sids_output )
+                    stripes_mo[,i] <- fillers[,f]
+                f_stripes_m[i] <- f_fillers[f]
+            }
+        }
+    }
+
+    ## Get updated wm representation
+    if( interstripe_cd == 'D' ) {
+        wm_m <- cnorm(apply(stripes_m,1,sum))
+        if( is.nan(wm_m[1]) )
+            wm_m <- hrr_o
+    } else {
+        wm_m <- mconvolve(stripes_m)
+    }
+
+    ## Update WM_o contents 
+    ## We are convolving the fill with the appropriate SID
+    for( i in 1:nstripes ) {
+        if( open_o[i] ) {
+            stripes_o[,i] <- stripes_mo[,i]
+            f_stripes_o[i] <- f_stripes_m[i]
+        }
+    }
+
+    ## Get updated wm representation
+    if( interstripe_cd == 'D' ) {
+        wm_o <- cnorm(apply(stripes_o,1,sum))
+        if( is.nan(wm_o[1]) )
+            wm_o <- hrr_o ## TODO: hrr_z?
+    } else {
+        wm_o <- mconvolve(stripes_o)
+    }
+
+    return(list(
+        wm_m = wm_m,
+        wm_o = wm_o,
+        elig = elig,
+        vals = vals,
+        stripes_m = stripes_m,
+        stripes_mo = stripes_mo,
+        f_stripes_m = f_stripes_m,
         f_stripes_o = f_stripes_o
     ))
 }
@@ -382,12 +518,10 @@ while( cur_task <= max_tasks ) {
     #############################################################################
 
     reward <- default_reward
-    elig_m <- replicate(nstripes,rep(0,n)) # There is an elig. trace for each BG input gate
-    elig_o <- replicate(nstripes,rep(0,n)) # There is an elig. trace for each BG output gate
-    prev_val_m <- rep(0.0,nstripes)     # prev. timestep values for maintenance NN output layer units
-    prev_val_o <- rep(0.0,nstripes)     # prev. timestep values for output NN output layer units
+    elig <- replicate(nstripes,rep(0,n)) # There is an elig. trace for each BG input gate
+    prev_val <- rep(0.0,nstripes)     # prev. timestep values for maintenance NN output layer units
     cur_wm_m <- hrr_o
-    cur_wm_o <- hrr_o
+    cur_wm_o <- hrr_o ## TODO: hrr_z?
 
     ## Fill stripes with identity vector
     stripes_m <- replicate(nstripes,hrr_i)  # Input layer stripes (hrrs)
@@ -411,57 +545,42 @@ while( cur_task <= max_tasks ) {
         state <- getState(1,p[t])
 
         #############################################################################
-        ## Input gating
+        ## Input / Output gating
         #############################################################################
 
         ## Update WM input layer global variables
-        ig <- inputGate(state,s_f[p[t]])
-        cur_wm_m <- ig$wm
-        stripes_m <- ig$stripes_m
-        stripes_mo <- ig$stripes_mo
-        f_stripes_m <- ig$f_stripes_m
-
-        #############################################################################
-        ## Output gating
-        #############################################################################
-
-        ## Update WM output layer global variables
-        og <- outputGate(state)
-        cur_wm_o <- og$wm
-        f_stripes_o <- og$f_stripes_o
+        g <- inputOutputGate(state,s_f[p[t]])
+        cur_wm_m <- g$wm_m
+        stripes_m <- g$stripes_m
+        stripes_mo <- g$stripes_mo
+        f_stripes_m <- g$f_stripes_m
+        cur_wm_o <- g$wm_o
+        f_stripes_o <- g$f_stripes_o
 
         #############################################################################
         ## Action selection
         #############################################################################
         
-        #ac <- selectAction()
+        ac <- selectAction()
 
         #############################################################################
         ## Neural network and TD training for this trial
         #############################################################################
 
-        ## INPUT GATE
-        error <- (reward + gamma_m * ig$vals) - prev_val_m
+        ## INPUT OUTPUT GATE
+        error <- (reward + gamma_g * g$vals) - prev_val
         for( i in 1:nstripes ) {
-            W_m[,i] <- W_m[,i] + lrate_m * error[i] * elig_m[,i]
-            elig_m[,i] <- cnorm(lambda_m * elig_m[,i] + ig$elig[,i])
+            W_g[,i] <- W_g[,i] + lrate_g * error[i] * elig[,i]
+            elig[,i] <- cnorm(lambda_g * elig[,i] + g$elig[,i])
         }
-        prev_val_m <- ig$vals 
-
-        ## OUTPUT GATE
-        error <- (reward + gamma_o * og$vals) - prev_val_o
-        for( i in 1:nstripes ) {
-            W_o[,i] <- W_o[,i] + lrate_o * error[i] * elig_o[,i]
-            elig_o[,i] <- cnorm(lambda_o * elig_o[,i] + og$elig[,i])
-        }
-        prev_val_o <- og$vals 
+        prev_val <- g$vals 
 
         ## ACTION SELECTION
         ## This is not TD learning - just a NN
-        #answer <- rep(0,nfillers)
-        #answer[s_f[p[t]]] <- 1
-        #error <- answer - ac$val
-        #W_a <- (W_a + lrate_a * t(error %*% t(cur_wm_o)))
+        answer <- rep(0,nfillers)
+        answer[s_f[p[t]]] <- 1
+        error <- answer - ac$val
+        W_a <- (W_a + lrate_a * t(error %*% t(cur_wm_o)))
 
     }
     #cat(sprintf('t=%d\n',t+1)) #debug
@@ -478,25 +597,20 @@ while( cur_task <= max_tasks ) {
     for( t in 1:nqueries ) {
         state <- getState(2,p[t])
 
+        ## TODO: no IG here
+
         #############################################################################
-        ## Input gating
+        ## Input / Output gating
         #############################################################################
 
         ## Update WM input layer global variables
-        #ig <- inputGate(state)
-        #cur_wm_m <- ig$wm
-        #stripes_m <- ig$stripes_m
-        #stripes_mo <- ig$stripes_mo
-        #f_stripes_m <- ig$f_stripes_m
-
-        #############################################################################
-        ## Output gating
-        #############################################################################
-
-        ## Update WM output layer global variables
-        og <- outputGate(state)
-        cur_wm_o <- og$wm
-        f_stripes_o <- og$f_stripes_o
+        g <- inputOutputGate(state,-1)
+        cur_wm_m <- g$wm_m
+        stripes_m <- g$stripes_m
+        stripes_mo <- g$stripes_mo
+        f_stripes_m <- g$f_stripes_m
+        cur_wm_o <- g$wm_o
+        f_stripes_o <- g$f_stripes_o
 
         #############################################################################
         ## Action selection
@@ -508,34 +622,25 @@ while( cur_task <= max_tasks ) {
         ## Neural network and TD training for this trial
         #############################################################################
 
-        ## INPUT GATE
-        #error <- (reward + gamma_m * ig$vals) - prev_val_m
-        #for( i in 1:nstripes ) {
-            #W_m[,i] <- W_m[,i] + lrate_m * error[i] * elig_m[,i]
-            #elig_m[,i] <- cnorm(lambda_m * elig_m[,i] + ig$elig[,i])
-        #}
-        #prev_val_m <- ig$vals 
-
-        ## OUTPUT GATE
-        error <- (reward + gamma_o * og$vals) - prev_val_o
+        ## INPUT OUTPUT GATE
+        error <- (reward + gamma_g * g$vals) - prev_val
         for( i in 1:nstripes ) {
-            W_o[,i] <- W_o[,i] + lrate_o * error[i] * elig_o[,i]
-            elig_o[,i] <- cnorm(lambda_o * elig_o[,i] + og$elig[,i])
+            W_g[,i] <- W_g[,i] + lrate_g * error[i] * elig[,i]
+            elig[,i] <- cnorm(lambda_g * elig[,i] + g$elig[,i])
         }
-        prev_val_o <- og$vals 
+        prev_val <- g$vals 
 
         ## ACTION SELECTION
         ## This is not TD learning - just a NN
-        #answer <- rep(0,nfillers)
-        #answer[s_f[p[t]]] <- 1
-        #error <- answer - ac$val 
-        #W_a <- (W_a + lrate_a * t(error %*% t(cur_wm_o)))
+        answer <- rep(0,nfillers)
+        answer[s_f[p[t]]] <- 1
+        error <- answer - ac$val 
+        W_a <- (W_a + lrate_a * t(error %*% t(cur_wm_o)))
 
         ## Determine correctness
         ## The trial is correct of the selected action matches the filler that
         ## was paired with the requested role.
-        #if( ac$action == s_f[p[t]] )
-        if( ac == s_f[p[t]] )
+        if( ac$action == s_f[p[t]] )
             correct_trial[t] <- 1
 
         #############################################################################
@@ -552,25 +657,22 @@ while( cur_task <= max_tasks ) {
                 reward <- default_reward
             }
 
-            ## Input NN
-            error <- reward - ig$vals 
+            ## INPUT OUTPUT GATE
+            error <- reward - g$vals 
             for( i in 1:nstripes ) {
-                W_m[,i] <- W_m[,i] + lrate_m * error[i] * elig_m[,i]
-            }
-
-            ## Output NN
-            error <- reward - og$vals 
-            for( i in 1:nstripes ) {
-                W_o[,i] <- W_o[,i] + lrate_o * error[i] * elig_o[,i]
+                W_g[,i] <- W_g[,i] + lrate_g * error[i] * elig[,i]
             }
         }
     }
 
     #############################################################################
-    ## Output prints
+    ## Task wrapup
     #############################################################################
 
+    ## Debug prints
     #if( FALSE ) {
+    #if( TRUE ) {
+    #if( cur_task %% 100 == 0 ) {
     if( cur_task %% 200 == 0 ) {
         cat(sprintf('Tasks Complete: %d\n',cur_task))
         cat(sprintf('Block Accuracy: %.2f\n',(block_tasks_correct/200)*100))
@@ -582,61 +684,12 @@ while( cur_task <= max_tasks ) {
         cat('Output WM Layer: \t')
         cat(f_stripes_o)
         cat('\n')
-        #cat(round(softmax(ac$val),4))
-        #cat('\n')
+        cat(round(softmax(ac$val),4))
+        cat('\n')
         cat(sprintf('Requested Role: %d\n',p[t]))
-        cat(sprintf('Selected Action: %d\n',ac))
         cat(sprintf('Correct Action: %d\n',s_f[p[t]]))
         cat('\n')
     }
-
-    if( FALSE ) {
-    #if( cur_task %% 200 == 0 ) {
-        ## For each stripe output open and close values
-        for( s in 1:nstripes ) {
-            for( r in 1:nroles ) {
-                for( o in 1:2 ) {
-                    if( state_cd == 'C' ) {
-                        state_wm <- convolve(convolve(ops[,o],roles[,r]),cur_wm_m)
-                    } else {
-                        state_wm <- convolve(cnorm(ops[,o] + roles[,r]),cur_wm_m)
-                    }
-                    for( g in 1:2 ) {
-                        cat(sprintf('%.2f',nndot(W_m[,s],convolve(state_wm,gono[,g]))+bias_m))
-                        if( s != nstripes || o != 2 || r != nroles || g != 2 )
-                            cat(',')
-                    }
-                }
-            }
-        }
-        cat('\n')
-    }
-
-    if( FALSE ) {
-    #if( cur_task %% 200 == 0 ) {
-        ## For each stripe output open and close values
-        for( s in 1:nstripes ) {
-            for( r in 1:nroles ) {
-                for( o in 1:2 ) {
-                    if( state_cd == 'C' ) {
-                        state_wm <- convolve(convolve(ops[,o],roles[,r]),cur_wm_m)
-                    } else {
-                        state_wm <- convolve(cnorm(ops[,o] + roles[,r]),cur_wm_m)
-                    }
-                    for( g in 1:2 ) {
-                        cat(sprintf('%.2f',nndot(W_o[,s],convolve(state_wm,gono[,g]))+bias_o))
-                        if( s != nstripes || o != 2 || r != nroles || g != 2 )
-                            cat(',')
-                    }
-                }
-            }
-        }
-        cat('\n')
-    }
-
-    #############################################################################
-    ## Task wrapup
-    #############################################################################
 
     ## Increment task tally
     cur_task <- cur_task + 1
@@ -652,7 +705,7 @@ cat(sprintf('Final Block Accuracy: %.2f\n',(block_tasks_correct/200)*100))
 if(FALSE) {
     novel_tasks_correct <- 0
     for( i in 1:test_set_size ) {
-        correct_trial <- rep(0,nqueries)
+        correct_trial <- rep(0,nroles)
 
         #############################################################################
         ## Store fillers
@@ -662,44 +715,35 @@ if(FALSE) {
         ## We aren't training here so no need to permute
         s_f <- sets$test_set[i,]
 
+        ## Permute the sentence so that roles are not always presented in the same order
+        p <- sample(nroles,nroles,replace=FALSE)
+
         ## Do a 'Store' for each filler
         ## Action selection can be skipped here
         ## Do not do any training
         for( t in 1:nroles ) {
-            state <- getState(1,t)
-
-            ig <- inputGate(state,s_f[t])
+            ## Input Gate
+            ig <- inputGate(1,p[t],s_f[p[t]])
             cur_wm_m <- ig$wm
             stripes_m <- ig$stripes_m
             stripes_mo <- ig$stripes_mo
             f_stripes_m <- ig$f_stripes_m
-
-            og <- outputGate(state)
-            cur_wm_o <- og$wm
-            f_stripes_o <- og$f_stripes_o
         }
 
-        ## Do a 'Retrieve' output gate, and select action
-        for( t in 1:nqueries ) {
-            state <- getState(2,t)
-
-            og <- outputGate(state)
-            cur_wm_o <- og$wm
-            f_stripes_o <- og$f_stripes_o
-
+        ## We only need to select an action in this case
+        for( req in 1:nroles ) {
             ac <- selectAction()
-            #if( ac$action == s_f[t] )
-            if( ac == s_f[t] )
-                correct_trial[t] <- 1
+            if( ac$action == s_f[req] ) {
+                correct_trial[req] <- 1
+            }
         }
 
         ## Determine if entire sequence is correct
         ## Not sure if we'll want to modify protocol above to train for this
-        if( sum(correct_trial) == nqueries )
+        if( sum(correct_trial) == nroles )
             novel_tasks_correct <- novel_tasks_correct + 1
     }
 
     ## Print final results
     cat(sprintf('Generalization Accuracy: %d\n',novel_tasks_correct))
-    #cat(sprintf('%d\n',novel_tasks_correct))
 } ## End generalization test

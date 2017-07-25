@@ -5,8 +5,8 @@
 ## 2017 Mike Jovanovich
 ##
 ## In this version OG sees WM after it has been update by IG within a timestep
-## This version assumes the action selection layer already knows what to do
-## based on output from WM; action selection is built-in, or 'pre-trained'
+## The version includes input gating on the query timestep, allowing WM contents
+## to be forgotten.
 ##
 #############################################################################
 
@@ -161,18 +161,21 @@ softmax_select <- function(x) {
 #############################################################################
 ## selectAction:
 ##
-## If f_stripes_o has one and only one choice, that filler will be output
+## This function handles action selection. The hidden layer takes as input
+## working memory contents along with the role that is being queried.
+## The max output unit is used to determine trial correctness.
 ##
 #############################################################################
 selectAction <- function() {
 
-    if( length(which(f_stripes_o != 'I')) != 1 ) {
-        action = -1
-    } else {
-        action = as.integer(substring(f_stripes_o[which(f_stripes_o!='I')],2))
-    }
-
-    return( action )
+    ## Get NN output and output unit (action) with max value
+    output <- (apply(W_a,2,nndot,cur_wm_o) + bias_a)
+    action <- softmax_select(output)
+    
+    return(list(
+        val = output,
+        action = action
+    ))
 }
 
 #############################################################################
@@ -434,7 +437,7 @@ while( cur_task <= max_tasks ) {
         ## Action selection
         #############################################################################
         
-        #ac <- selectAction()
+        ac <- selectAction()
 
         #############################################################################
         ## Neural network and TD training for this trial
@@ -458,10 +461,10 @@ while( cur_task <= max_tasks ) {
 
         ## ACTION SELECTION
         ## This is not TD learning - just a NN
-        #answer <- rep(0,nfillers)
-        #answer[s_f[p[t]]] <- 1
-        #error <- answer - ac$val
-        #W_a <- (W_a + lrate_a * t(error %*% t(cur_wm_o)))
+        answer <- rep(0,nfillers)
+        answer[s_f[p[t]]] <- 1
+        error <- answer - ac$val
+        W_a <- (W_a + lrate_a * t(error %*% t(cur_wm_o)))
 
     }
     #cat(sprintf('t=%d\n',t+1)) #debug
@@ -483,11 +486,11 @@ while( cur_task <= max_tasks ) {
         #############################################################################
 
         ## Update WM input layer global variables
-        #ig <- inputGate(state)
-        #cur_wm_m <- ig$wm
-        #stripes_m <- ig$stripes_m
-        #stripes_mo <- ig$stripes_mo
-        #f_stripes_m <- ig$f_stripes_m
+        ig <- inputGate(state)
+        cur_wm_m <- ig$wm
+        stripes_m <- ig$stripes_m
+        stripes_mo <- ig$stripes_mo
+        f_stripes_m <- ig$f_stripes_m
 
         #############################################################################
         ## Output gating
@@ -509,12 +512,12 @@ while( cur_task <= max_tasks ) {
         #############################################################################
 
         ## INPUT GATE
-        #error <- (reward + gamma_m * ig$vals) - prev_val_m
-        #for( i in 1:nstripes ) {
-            #W_m[,i] <- W_m[,i] + lrate_m * error[i] * elig_m[,i]
-            #elig_m[,i] <- cnorm(lambda_m * elig_m[,i] + ig$elig[,i])
-        #}
-        #prev_val_m <- ig$vals 
+        error <- (reward + gamma_m * ig$vals) - prev_val_m
+        for( i in 1:nstripes ) {
+            W_m[,i] <- W_m[,i] + lrate_m * error[i] * elig_m[,i]
+            elig_m[,i] <- cnorm(lambda_m * elig_m[,i] + ig$elig[,i])
+        }
+        prev_val_m <- ig$vals 
 
         ## OUTPUT GATE
         error <- (reward + gamma_o * og$vals) - prev_val_o
@@ -526,16 +529,15 @@ while( cur_task <= max_tasks ) {
 
         ## ACTION SELECTION
         ## This is not TD learning - just a NN
-        #answer <- rep(0,nfillers)
-        #answer[s_f[p[t]]] <- 1
-        #error <- answer - ac$val 
-        #W_a <- (W_a + lrate_a * t(error %*% t(cur_wm_o)))
+        answer <- rep(0,nfillers)
+        answer[s_f[p[t]]] <- 1
+        error <- answer - ac$val 
+        W_a <- (W_a + lrate_a * t(error %*% t(cur_wm_o)))
 
         ## Determine correctness
         ## The trial is correct of the selected action matches the filler that
         ## was paired with the requested role.
-        #if( ac$action == s_f[p[t]] )
-        if( ac == s_f[p[t]] )
+        if( ac$action == s_f[p[t]] )
             correct_trial[t] <- 1
 
         #############################################################################
@@ -582,10 +584,9 @@ while( cur_task <= max_tasks ) {
         cat('Output WM Layer: \t')
         cat(f_stripes_o)
         cat('\n')
-        #cat(round(softmax(ac$val),4))
-        #cat('\n')
+        cat(round(softmax(ac$val),4))
+        cat('\n')
         cat(sprintf('Requested Role: %d\n',p[t]))
-        cat(sprintf('Selected Action: %d\n',ac))
         cat(sprintf('Correct Action: %d\n',s_f[p[t]]))
         cat('\n')
     }
@@ -649,7 +650,7 @@ cat(sprintf('Final Block Accuracy: %.2f\n',(block_tasks_correct/200)*100))
 #############################################################################
 ## Generalization Test
 #############################################################################
-if(FALSE) {
+if(TRUE) {
     novel_tasks_correct <- 0
     for( i in 1:test_set_size ) {
         correct_trial <- rep(0,nqueries)
@@ -688,8 +689,7 @@ if(FALSE) {
             f_stripes_o <- og$f_stripes_o
 
             ac <- selectAction()
-            #if( ac$action == s_f[t] )
-            if( ac == s_f[t] )
+            if( ac$action == s_f[t] )
                 correct_trial[t] <- 1
         }
 
