@@ -6,7 +6,7 @@
 ##
 ## In this version OG sees WM after it has been update by IG within a timestep.
 ## This version uses a NN to learn action choice, just like the IG model.
-## This version includes the 'op' signal, that tells it whether to store or retrieve
+## The 'op' signal for store or retrieve has been removed in this version.
 ##
 #############################################################################
 
@@ -76,7 +76,7 @@ use_sids_output <- args[which(argnames=='use_sids_output')] == 'T'
 
 ## Op code vectors
 ## To index: [,1] for store, [,2] for retrieve
-ops <- replicate(2,hrr(n,normalized=TRUE))
+#ops <- replicate(2,hrr(n,normalized=TRUE))
 
 ## Op code vectors
 ## To index: [,1] go, [,2] no go 
@@ -183,11 +183,12 @@ selectAction <- function() {
 #############################################################################
 getState <- function(o,r) {
     ## Encode state (role,op)
-    if( state_cd == 'C' ) {
-        state <- convolve(ops[,o],roles[,r])
-    } else {
-        state <- cnorm(ops[,o] + roles[,r])
-    }
+    #if( state_cd == 'C' ) {
+    #    state <- convolve(ops[,o],roles[,r])
+    #} else {
+    #    state <- cnorm(ops[,o] + roles[,r])
+    #}
+    state <- roles[,r]
     return (state)
 }
 
@@ -598,9 +599,11 @@ while( cur_task <= max_tasks ) {
             for( r in 1:nroles ) {
                 for( o in 1:2 ) {
                     if( state_cd == 'C' ) {
-                        state_wm <- convolve(convolve(ops[,o],roles[,r]),cur_wm_m)
+                        #state_wm <- convolve(convolve(ops[,o],roles[,r]),cur_wm_m)
+                        state_wm <- convolve(roles[,r],cur_wm_m)
                     } else {
-                        state_wm <- convolve(cnorm(ops[,o] + roles[,r]),cur_wm_m)
+                        #state_wm <- convolve(cnorm(ops[,o] + roles[,r]),cur_wm_m)
+                        state_wm <- convolve(roles[,r],cur_wm_m)
                     }
                     for( g in 1:2 ) {
                         cat(sprintf('%.2f',nndot(W_m[,s],convolve(state_wm,gono[,g]))+bias_m))
@@ -620,9 +623,11 @@ while( cur_task <= max_tasks ) {
             for( r in 1:nroles ) {
                 for( o in 1:2 ) {
                     if( state_cd == 'C' ) {
-                        state_wm <- convolve(convolve(ops[,o],roles[,r]),cur_wm_m)
+                        #state_wm <- convolve(convolve(ops[,o],roles[,r]),cur_wm_m)
+                        state_wm <- convolve(roles[,r],cur_wm_m)
                     } else {
-                        state_wm <- convolve(cnorm(ops[,o] + roles[,r]),cur_wm_m)
+                        #state_wm <- convolve(cnorm(ops[,o] + roles[,r]),cur_wm_m)
+                        state_wm <- convolve(roles[,r],cur_wm_m)
                     }
                     for( g in 1:2 ) {
                         cat(sprintf('%.2f',nndot(W_o[,s],convolve(state_wm,gono[,g]))+bias_o))
