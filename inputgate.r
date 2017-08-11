@@ -6,7 +6,7 @@
 ##
 ## Actions must be learned for this model, since there is no output gating.
 ## The signal to drive action choice is all of WM, along with a prompt for the role.
-## This version includes the 'op' signal, that tells it whether to store or retrieve
+## The 'op' signal for store or retrieve has been removed in this version.
 ##
 #############################################################################
 
@@ -73,7 +73,7 @@ sids <- replicate(nstripes,hrr(n,normalized=TRUE))
 
 ## Op code vectors
 ## To index: [,1] for store, [,2] for retrieve
-ops <- replicate(2,hrr(n,normalized=TRUE))
+#ops <- replicate(2,hrr(n,normalized=TRUE))
 
 ## Op code vectors
 ## To index: [,1] go, [,2] no go 
@@ -165,11 +165,12 @@ softmax_select <- function(x) {
 inputGate <- function(o,r,f=-1) {
 
     ## Encode state (role,op)
-    if( state_cd == 'C' ) {
-        state <- convolve(ops[,o],roles[,r])
-    } else {
-        state <- cnorm(ops[,o] + roles[,r])
-    }
+    #if( state_cd == 'C' ) {
+    #    state <- convolve(ops[,o],roles[,r])
+    #} else {
+    #    state <- cnorm(ops[,o] + roles[,r])
+    #}
+    state <- roles[,r]
 
     ## Get NN output unit values
     ## Note that state_wm is for the previous timestep
@@ -447,9 +448,11 @@ while( cur_task <= max_tasks ) {
             for( r in 1:nroles ) {
                 for( o in 1:2 ) {
                     if( state_cd == 'C' ) {
-                        state_wm <- convolve(convolve(ops[,o],roles[,r]),cur_wm)
+                        #state_wm <- convolve(convolve(ops[,o],roles[,r]),cur_wm)
+                        state_wm <- convolve(roles[,r],cur_wm)
                     } else {
-                        state_wm <- convolve(cnorm(ops[,o] + roles[,r]),cur_wm)
+                        #state_wm <- convolve(cnorm(ops[,o] + roles[,r]),cur_wm)
+                        state_wm <- convolve(roles[,r],cur_wm)
                     }
                     for( g in 1:2 ) {
                         cat(sprintf('%.2f',nndot(W_m[,s],convolve(state_wm,gono[,g]))+bias_m))
@@ -471,8 +474,8 @@ while( cur_task <= max_tasks ) {
 }
 
 ## Print final results
-cat(sprintf('%d\n',cur_task))
-#cat(sprintf('Final Block Accuracy: %.2f\n',(block_tasks_correct/200)*100))
+#cat(sprintf('%d\n',cur_task))
+cat(sprintf('Final Block Accuracy: %.2f\n',(block_tasks_correct/200)*100))
 
 #############################################################################
 ## Generalization Test
