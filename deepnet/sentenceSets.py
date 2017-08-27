@@ -14,6 +14,24 @@ class sentenceSets:
     ##
     #############################################################################
 
+    ## Creates one-hot vectors from class ints for the sentences
+    ## Cols 1-nfillers are for fillers; roles are appended to the columns after fillers
+    def oneHotEncode(cur_set,queries,answers,nroles,nfillers):
+        ## Create the ndarray for the encoded vectors
+        x = np.zeros(shape=(cur_set.shape[0],nroles+1,nfillers+nroles), dtype=float)
+        y = np.zeros(shape=(cur_set.shape[0],nroles+1,nfillers), dtype=float)
+
+        for sentence in range(cur_set.shape[0]):
+            ## Add 'store' inputs
+            for word in range(nroles):
+                x[sentence,word,cur_set[sentence,word]] = y[sentence,word,cur_set[sentence,word]] = 1.0
+                x[sentence,word,nfillers+word] =  1.0
+            ## Add final 'retrieve' or 'query' input
+            x[sentence,word+1,nfillers+queries[sentence]] = 1.0
+            y[sentence,word+1,answers[sentence]] = 1.0
+            
+        return x, y
+
     ## This is a private function to check whether a sentence already exists in a 
     ## given set
     def setContains(s,cur_set):
@@ -70,7 +88,17 @@ class sentenceSets:
                 sentence = np.random.choice(nfillers,nroles,replace=True)
             test_set[i,] = sentence
 
-        return train_set, test_set
+        ## Get role query for final timestep and the answer that goes with it
+        queries_train = np.random.randint(nroles,size=size_train)
+        answers_train = [train_set[i,queries_train[i]] for i in range(size_train)]
+        queries_test = np.random.randint(nroles,size=size_test)
+        answers_test = [test_set[i,queries_test[i]] for i in range(size_test)]
+
+        ## One-hot encode classes
+        train_setX, train_setY = sentenceSets.oneHotEncode(train_set,queries_train,answers_train,nroles,nfillers)
+        test_setX, test_setY = sentenceSets.oneHotEncode(test_set,queries_test,answers_test,nroles,nfillers)
+
+        return train_setX, train_setY, test_setX, test_setY
 
 
     ## Private function to check for anticorrelation in a sentence
@@ -138,7 +166,17 @@ class sentenceSets:
                 sentence = np.random.choice(nfillers,nroles,replace=True)
             test_set[i,] = sentence
 
-        return train_set, test_set
+        ## Get role query for final timestep and the answer that goes with it
+        queries_train = np.random.randint(nroles,size=size_train)
+        answers_train = [train_set[i,queries_train[i]] for i in range(size_train)]
+        queries_test = np.random.randint(nroles,size=size_test)
+        answers_test = [test_set[i,queries_test[i]] for i in range(size_test)]
+
+        ## One-hot encode classes
+        train_setX, train_setY = sentenceSets.oneHotEncode(train_set,queries_train,answers_train,nroles,nfillers)
+        test_setX, test_setY = sentenceSets.oneHotEncode(test_set,queries_test,answers_test,nroles,nfillers)
+
+        return train_setX, train_setY, test_setX, test_setY
 
     ## Two of the ten fillers will never be used in role 'agent' (1) in 
     ## the training set. The test set will then present them in this role.
@@ -190,4 +228,14 @@ class sentenceSets:
                 sentence = np.random.choice(nfillers,nroles,replace=True)
             test_set[i,] = sentence
 
-        return train_set, test_set
+        ## Get role query for final timestep and the answer that goes with it
+        queries_train = np.random.randint(nroles,size=size_train)
+        answers_train = [train_set[i,queries_train[i]] for i in range(size_train)]
+        queries_test = np.random.randint(nroles,size=size_test)
+        answers_test = [test_set[i,queries_test[i]] for i in range(size_test)]
+
+        ## One-hot encode classes
+        train_setX, train_setY = sentenceSets.oneHotEncode(train_set,queries_train,answers_train,nroles,nfillers)
+        test_setX, test_setY = sentenceSets.oneHotEncode(test_set,queries_test,answers_test,nroles,nfillers)
+
+        return train_setX, train_setY, test_setX, test_setY

@@ -1,12 +1,10 @@
 from sentenceSets import sentenceSets
-import numpy as np
 
-np.random.seed(1)
-
-#train_set,test_set = sentenceSets.standardGeneralization(3,10,200,100)
-#[train_set,test_set] = sentenceSets.spuriousAnticorrelation(3,10,200,100)
-#[train_set,test_set] = sentenceSets.fullCombinatorial(3,10,200,100)
-#print(train_set[0:9,])
-#print(train_set[-10:,])
-#print(test_set[0:9,])
-#print(test_set[-10:,])
+#sentenceSets.standardGeneralization(3,10,200,100)
+#train_setX, train_setY, test_setX, test_setY = sentenceSets.standardGeneralization(3,10,200,100)
+#train_setX, train_setY, test_setX, test_setY = sentenceSets.spuriousAnticorrelation(3,10,200,100)
+train_setX, train_setY, test_setX, test_setY = sentenceSets.fullCombinatorial(3,10,200,100)
+print(train_setX[0:1,])
+print(train_setY[0:1,])
+print(test_setX[0:1,])
+print(test_setY[0:1,])
