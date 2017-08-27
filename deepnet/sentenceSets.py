@@ -47,11 +47,17 @@ class sentenceSets:
     def standardGeneralization(nroles,nfillers,size_train,size_test):
 
         ## What will be returned is a matrix where each row is a sentence
-        train_set = np.zeros(shape=(size_train,nroles),dtype=int)
-        test_set = np.zeros(shape=(size_test,nroles),dtype=int)
+        trainX = np.zeros(shape=(size_train,nroles+1),dtype=int)
+        testX = np.zeros(shape=(size_test,nroles+1),dtype=int)
 
         ## We try to make the number of times a word appears in each role
         times_word_in_role = int(size_train / nfillers / nroles)
+
+        ## Get role query for final timestep and the answer that goes with it
+        queries_train = np.random.randint(nroles,size=size_train)
+        queries_test = np.random.randint(nroles,size=size_test)
+        queries_train_coded = -1*queries_train-1
+        queries_test_coded = -1*queries_test-1
 
         cur_row = 0
         for f in range(nfillers):
@@ -62,43 +68,48 @@ class sentenceSets:
                         ## Make sure we put a unique sentence into the training set
                         sentence = np.random.choice(nfillers,nroles,replace=True)
                         sentence[r] = f
-                        while( sentenceSets.setContains( sentence, train_set ) ):
+                        while( sentenceSets.setContains( sentence, trainX ) ):
                             sentence = np.random.choice(nfillers,nroles,replace=True)
                             sentence[r] = f
 
-                        train_set[cur_row,] = sentence
+                        trainX[cur_row,] = np.append(sentence,queries_train_coded[cur_row])
                         cur_row = cur_row + 1
 
         ## Fill any extra non-uniform buffer at the end of the set with random sentences
         while cur_row < size_train:
             ## Make sure we put a unique sentence into the training set
             sentence = np.random.choice(nfillers,nroles,replace=True)
-            while( sentenceSets.setContains( sentence, train_set ) ):
+            while( sentenceSets.setContains( sentence, trainX ) ):
                 sentence = np.random.choice(nfillers,nroles,replace=True)
 
-            train_set[cur_row,] = sentence
+            trainX[cur_row,] = np.append(sentence,queries_train_coded[cur_row])
             cur_row = cur_row + 1
 
         ## Build the test set
-        for i in range(size_test ):
+        for i in range(size_test):
             ## Make sure we put a unique sentence into the test set
             sentence = np.random.choice(nfillers,nroles,replace=True)
-            while( sentenceSets.setContains( sentence, train_set ) 
-              or sentenceSets.setContains( sentence, test_set ) ):
+            while( sentenceSets.setContains( sentence, trainX ) 
+              or sentenceSets.setContains( sentence, testX ) ):
                 sentence = np.random.choice(nfillers,nroles,replace=True)
-            test_set[i,] = sentence
+            testX[i,] = np.append(sentence,queries_test_coded[i])
 
         ## Get role query for final timestep and the answer that goes with it
-        queries_train = np.random.randint(nroles,size=size_train)
-        answers_train = [train_set[i,queries_train[i]] for i in range(size_train)]
-        queries_test = np.random.randint(nroles,size=size_test)
-        answers_test = [test_set[i,queries_test[i]] for i in range(size_test)]
+        answers_train = np.asarray([trainX[i,queries_train[i]] for i in range(size_train)])
+        answers_test = np.asarray([testX[i,queries_test[i]] for i in range(size_test)])
 
-        ## One-hot encode classes
-        train_setX, train_setY = sentenceSets.oneHotEncode(train_set,queries_train,answers_train,nroles,nfillers)
-        test_setX, test_setY = sentenceSets.oneHotEncode(test_set,queries_test,answers_test,nroles,nfillers)
+        trainY = np.zeros((size_train, nfillers))
+        trainY[np.arange(size_train), answers_train] = 1
+        testY = np.zeros((size_test, nfillers))
+        testY[np.arange(size_test), answers_test] = 1
 
-        return train_setX, train_setY, test_setX, test_setY
+        ## debug
+        #print(trainX[0:9,])
+        #print(trainY[0:9,])
+        #print(testX[0:9,])
+        #print(testY[0:9,])
+
+        return trainX, trainY, testX, testY
 
 
     ## Private function to check for anticorrelation in a sentence
@@ -123,8 +134,8 @@ class sentenceSets:
                 anticorrelations[i] = i-1
 
         ## What will be returned is a matrix where each row is a sentence
-        train_set = np.zeros(shape=(size_train,nroles),dtype=int)
-        test_set = np.zeros(shape=(size_test,nroles),dtype=int)
+        trainX = np.zeros(shape=(size_train,nroles),dtype=int)
+        testX = np.zeros(shape=(size_test,nroles),dtype=int)
 
         ## We try to make the number of times a word appears in each role
         times_word_in_role = int(size_train / nfillers / nroles)
@@ -139,11 +150,11 @@ class sentenceSets:
                         sentence = np.random.choice(nfillers,nroles,replace=True)
                         sentence[r] = f
                         while( sentenceSets.containsAnticorrelation( sentence, anticorrelations ) 
-                          or sentenceSets.setContains( sentence, train_set ) ):
+                          or sentenceSets.setContains( sentence, trainX ) ):
                             sentence = np.random.choice(nfillers,nroles,replace=True)
                             sentence[r] = f
 
-                        train_set[cur_row,] = sentence
+                        trainX[cur_row,] = sentence
                         cur_row = cur_row + 1
 
         ## Fill any extra non-uniform buffer at the end of the set with random sentences
@@ -151,10 +162,10 @@ class sentenceSets:
             ## Make sure we put a unique sentence into the training set
             sentence = np.random.choice(nfillers,nroles,replace=True)
             while( sentenceSets.containsAnticorrelation( sentence, anticorrelations ) 
-              or sentenceSets.setContains( sentence, train_set ) ):
+              or sentenceSets.setContains( sentence, trainX ) ):
                 sentence = np.random.choice(nfillers,nroles,replace=True)
 
-            train_set[cur_row,] = sentence
+            trainX[cur_row,] = sentence
             cur_row = cur_row + 1
 
         ## Build the test set
@@ -162,29 +173,29 @@ class sentenceSets:
             ## Make sure we put a unique sentence into the test set
             sentence = np.random.choice(nfillers,nroles,replace=True)
             while( sentenceSets.containsAnticorrelation( sentence, anticorrelations ) == False
-              or sentenceSets.setContains( sentence, test_set ) ):
+              or sentenceSets.setContains( sentence, testX ) ):
                 sentence = np.random.choice(nfillers,nroles,replace=True)
-            test_set[i,] = sentence
+            testX[i,] = sentence
 
         ## Get role query for final timestep and the answer that goes with it
         queries_train = np.random.randint(nroles,size=size_train)
-        answers_train = [train_set[i,queries_train[i]] for i in range(size_train)]
+        answers_train = [trainX[i,queries_train[i]] for i in range(size_train)]
         queries_test = np.random.randint(nroles,size=size_test)
-        answers_test = [test_set[i,queries_test[i]] for i in range(size_test)]
+        answers_test = [testX[i,queries_test[i]] for i in range(size_test)]
 
         ## One-hot encode classes
-        train_setX, train_setY = sentenceSets.oneHotEncode(train_set,queries_train,answers_train,nroles,nfillers)
-        test_setX, test_setY = sentenceSets.oneHotEncode(test_set,queries_test,answers_test,nroles,nfillers)
+        trainXX, trainXY = sentenceSets.oneHotEncode(trainX,queries_train,answers_train,nroles,nfillers)
+        testXX, testXY = sentenceSets.oneHotEncode(testX,queries_test,answers_test,nroles,nfillers)
 
-        return train_setX, train_setY, test_setX, test_setY
+        return trainXX, trainXY, testXX, testXY
 
     ## Two of the ten fillers will never be used in role 'agent' (1) in 
     ## the training set. The test set will then present them in this role.
     def fullCombinatorial(nroles,nfillers,size_train,size_test):
 
         ## What will be returned is a matrix where each row is a sentence
-        train_set = np.zeros(shape=(size_train,nroles),dtype=int)
-        test_set = np.zeros(shape=(size_test,nroles),dtype=int)
+        trainX = np.zeros(shape=(size_train,nroles),dtype=int)
+        testX = np.zeros(shape=(size_test,nroles),dtype=int)
 
         ## We try to make the number of times a word appears in each role
         times_word_in_role = int(size_train / nfillers / nroles)
@@ -201,11 +212,11 @@ class sentenceSets:
                         sentence = np.random.choice(nfillers,nroles,replace=True)
                         sentence[r] = f
                         while( sentence[0] == 0 or sentence[0] == 1 
-                          or sentenceSets.setContains( sentence, train_set ) ):
+                          or sentenceSets.setContains( sentence, trainX ) ):
                             sentence = np.random.choice(nfillers,nroles,replace=True)
                             sentence[r] = f
 
-                        train_set[cur_row,] = sentence
+                        trainX[cur_row,] = sentence
                         cur_row = cur_row + 1
 
         ## Fill any extra non-uniform buffer at the end of the set with random sentences
@@ -213,10 +224,10 @@ class sentenceSets:
             ## Make sure we put a unique sentence into the training set
             sentence = np.random.choice(nfillers,nroles,replace=True)
             while( sentence[0] == 0 or sentence[0] == 1 
-              or sentenceSets.setContains( sentence, train_set ) ):
+              or sentenceSets.setContains( sentence, trainX ) ):
                 sentence = np.random.choice(nfillers,nroles,replace=True)
 
-            train_set[cur_row,] = sentence
+            trainX[cur_row,] = sentence
             cur_row = cur_row + 1
 
         ## Build the test set
@@ -224,18 +235,18 @@ class sentenceSets:
             ## Make sure we put a unique sentence into the test set
             sentence = np.random.choice(nfillers,nroles,replace=True)
             while( (sentence[0] != 0 and sentence[0] != 1)
-              or sentenceSets.setContains( sentence, test_set ) ):
+              or sentenceSets.setContains( sentence, testX ) ):
                 sentence = np.random.choice(nfillers,nroles,replace=True)
-            test_set[i,] = sentence
+            testX[i,] = sentence
 
         ## Get role query for final timestep and the answer that goes with it
         queries_train = np.random.randint(nroles,size=size_train)
-        answers_train = [train_set[i,queries_train[i]] for i in range(size_train)]
+        answers_train = [trainX[i,queries_train[i]] for i in range(size_train)]
         queries_test = np.random.randint(nroles,size=size_test)
-        answers_test = [test_set[i,queries_test[i]] for i in range(size_test)]
+        answers_test = [testX[i,queries_test[i]] for i in range(size_test)]
 
         ## One-hot encode classes
-        train_setX, train_setY = sentenceSets.oneHotEncode(train_set,queries_train,answers_train,nroles,nfillers)
-        test_setX, test_setY = sentenceSets.oneHotEncode(test_set,queries_test,answers_test,nroles,nfillers)
+        trainXX, trainXY = sentenceSets.oneHotEncode(trainX,queries_train,answers_train,nroles,nfillers)
+        testXX, testXY = sentenceSets.oneHotEncode(testX,queries_test,answers_test,nroles,nfillers)
 
-        return train_setX, train_setY, test_setX, test_setY
+        return trainXX, trainXY, testXX, testXY
