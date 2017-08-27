@@ -35,7 +35,7 @@ class sentenceSets:
         ## We try to make the number of times a word appears in each role
         times_word_in_role = int(size_train / nfillers / nroles)
 
-        cur_row = 1
+        cur_row = 0
         for f in range(nfillers):
             for r in range(nroles):
                 for t in range(times_word_in_role):
@@ -101,7 +101,7 @@ class sentenceSets:
         ## We try to make the number of times a word appears in each role
         times_word_in_role = int(size_train / nfillers / nroles)
 
-        cur_row = 1
+        cur_row = 0
         for f in range(nfillers):
             for r in range(nroles):
                 for t in range(times_word_in_role):
@@ -151,7 +151,7 @@ class sentenceSets:
         ## We try to make the number of times a word appears in each role
         times_word_in_role = int(size_train / nfillers / nroles)
 
-        cur_row = 1
+        cur_row = 0
         for f in range(nfillers):
             for r in range(nroles):
                 if( r == 0 and (f == 0 or f == 1) ):
