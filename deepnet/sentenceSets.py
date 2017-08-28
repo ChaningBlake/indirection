@@ -47,8 +47,8 @@ class sentenceSets:
     def standardGeneralization(nroles,nfillers,size_train,size_test):
 
         ## What will be returned is a matrix where each row is a sentence
-        trainX = np.zeros(shape=(size_train,nroles+1),dtype=int)
-        testX = np.zeros(shape=(size_test,nroles+1),dtype=int)
+        trainX = np.zeros(shape=(size_train,nroles+1,1),dtype=int)
+        testX = np.zeros(shape=(size_test,nroles+1,1),dtype=int)
 
         ## We try to make the number of times a word appears in each role
         times_word_in_role = int(size_train / nfillers / nroles)
@@ -72,7 +72,7 @@ class sentenceSets:
                             sentence = np.random.choice(nfillers,nroles,replace=True)
                             sentence[r] = f
 
-                        trainX[cur_row,] = np.append(sentence,queries_train_coded[cur_row])
+                        trainX[cur_row,] = np.append(sentence,queries_train_coded[cur_row]).reshape(nroles+1,1)
                         cur_row = cur_row + 1
 
         ## Fill any extra non-uniform buffer at the end of the set with random sentences
@@ -82,7 +82,7 @@ class sentenceSets:
             while( sentenceSets.setContains( sentence, trainX ) ):
                 sentence = np.random.choice(nfillers,nroles,replace=True)
 
-            trainX[cur_row,] = np.append(sentence,queries_train_coded[cur_row])
+            trainX[cur_row,] = np.append(sentence,queries_train_coded[cur_row]).reshape(nroles+1,1)
             cur_row = cur_row + 1
 
         ## Build the test set
@@ -92,11 +92,11 @@ class sentenceSets:
             while( sentenceSets.setContains( sentence, trainX ) 
               or sentenceSets.setContains( sentence, testX ) ):
                 sentence = np.random.choice(nfillers,nroles,replace=True)
-            testX[i,] = np.append(sentence,queries_test_coded[i])
+            testX[i,] = np.append(sentence,queries_test_coded[i]).reshape(nroles+1,1)
 
         ## Get role query for final timestep and the answer that goes with it
-        answers_train = np.asarray([trainX[i,queries_train[i]] for i in range(size_train)])
-        answers_test = np.asarray([testX[i,queries_test[i]] for i in range(size_test)])
+        answers_train = np.asarray([trainX[i,queries_train[i],0] for i in range(size_train)])
+        answers_test = np.asarray([testX[i,queries_test[i],0] for i in range(size_test)])
 
         trainY = np.zeros((size_train, nfillers))
         trainY[np.arange(size_train), answers_train] = 1

@@ -8,3 +8,7 @@ train_setX, train_setY, test_setX, test_setY = sentenceSets.standardGeneralizati
 #print(train_setY[0:1,])
 #print(test_setX[0:1,])
 #print(test_setY[0:1,])
+
+#print(train_setX[0:2,])
+#print(type(train_setX))
+#print(train_setX.shape)

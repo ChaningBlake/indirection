@@ -12,7 +12,7 @@ from sentenceSets import sentenceSets
 
 ## Initialize settings
 num_epochs = 500
-state_size = 3
+state_size = 1 ## how many connections to the hidden state unit
 nroles = 3
 nfillers = 10
 train_set_size = 200
@@ -21,17 +21,22 @@ test_set_size = 100
 ## Set random seed
 np.random.seed(1)
 
-## Create placeholders for the sentence training sets
-batchX_placeholder = tf.placeholder(tf.float32, [train_set_size, nroles+1])
-batchY_placeholder = tf.placeholder(tf.int32, [train_set_size, nroles+1])
+## Create placeholders for the sentence
+## Each row is a timestep
+batchX_placeholder = tf.placeholder(tf.float32, [nroles+1, nfillers+nroles])
+batchY_placeholder = tf.placeholder(tf.int32, [nroles+1, nfillers])
 
 ## Create starting state placeholder
-init_state = tf.placeholder(tf.float32, [train_set_size, state_size])
+init_state = tf.placeholder(tf.float32, [nfillers+nroles, state_size])
 
+## Weights feeding into hidden state layer
+## Wa = input weights
+## Wb = weights from hidden layer previous timestep
 ## Create variables for the weights and biases for cell state and NN output
-W = tf.Variable(np.random.rand(state_size+1, state_size), dtype=tf.float32)
+W = tf.Variable(np.random.rand(state_size+1, nfillers+nroles), dtype=tf.float32)
 b = tf.Variable(np.zeros((1,state_size)), dtype=tf.float32)
 
+## Weights feeding into output layer
 W2 = tf.Variable(np.random.rand(state_size, nfillers),dtype=tf.float32)
 b2 = tf.Variable(np.zeros((1,nfillers)), dtype=tf.float32)
 
@@ -40,6 +45,16 @@ inputs_series = tf.unstack(batchX_placeholder, axis=1)
 labels_series = tf.unstack(batchY_placeholder, axis=1)
 labels = labels_series[-1]
 
+## In recurrent network, each hidden unit receives input from the input layer,
+## and from every hidden unit in the previous timestep (including itself). Each hidden unit 
+## connects to all outputs as well as all hidden units in the next timestep.
+## We are below calculating state at each timestep. We will calculate output later.
+
+## current_input * Wa + current_state * Wb
+current_input = inputs_series[0]
+print(current_input)
+
+'''
 ## Forward pass
 ## Here we are building the model; it is not actually run at this point
 ## What we actually want to do is calculate the sum of two affine transforms: 
@@ -70,27 +85,14 @@ with tf.Session() as sess:
     loss_list = []
 
     for epoch_idx in range(num_epochs):
-
-        ## Choose test
-        train_set, test_set = sentenceSets.standardGeneralization(3,10,200,100)
-        #train_set, test_set = sentenceSets.spuriousAnticorrelation(3,10,200,100)
-        #train_set, test_set = sentenceSets.fullCombinatorial(3,10,200,100)
-
-        ## debug
-        #print(train_set[0:9,])
+        train_setX, train_setY, test_setX, test_setY = sentenceSets.standardGeneralization(3,10,200,100)
+        #train_setX, train_setY, test_setX, test_setY = sentenceSets.spuriousAnticorrelation(3,10,200,100)
+        #train_setX, train_setY, test_setX, test_setY = sentenceSets.fullCombinatorial(3,10,200,100)
 
         _current_state = np.zeros((train_set_size, state_size))
 
-        ## Choose random testing roles from training set
-        queries = np.random.randint(nroles,size=train_set_size)
-        answers = [train_set[i,queries[i]] for i in range(train_set_size)]
-
-        x = y = train_set
-        x = np.vstack((x.T,np.asarray(queries))).T
-        y = np.vstack((y.T,np.asarray(answers))).T
-
-        batchX = x
-        batchY = y 
+        batchX = train_setX
+        batchY = train_setY
 
         _total_loss, _train_step, _current_state, _predictions = sess.run(
             [total_loss, train_step, current_state, predictions],
@@ -107,3 +109,4 @@ with tf.Session() as sess:
             #print(train_set[0,])
             #print(x[0,])
             #print(_predictions[0,])
+'''
