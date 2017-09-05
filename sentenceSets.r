@@ -226,3 +226,63 @@ fullCombinatorial <- function(nroles,nfillers,size_train,size_test) {
         test_set = test_set
     ))
 }
+
+## Certain words (1 and 2) are never presented in any role during training
+novelFiller <- function(nroles,nfillers,size_train,size_test) {
+
+    ## What will be returned is a matrix where each row is a sentence
+    train_set <- array(rep(-1,nroles*size_train),dim=c(size_train,nroles))
+    test_set <- array(rep(-1,nroles*size_test),dim=c(size_test,nroles))
+
+    ## We try to make the number of times a word appears in each role
+    times_word_in_role <- as.integer(size_train / nfillers / nroles)
+
+    cur_row <- 1
+    for( f in 3:nfillers ) {
+        for( r in 1:nroles ) {
+            for( t in 1: times_word_in_role ) {
+                if( cur_row <= size_train ) {
+                    
+                    ## Make sure we put a unique sentence into the training set
+                    sentence <- sample(3:nfillers,nroles,replace=TRUE)
+                    sentence[r] <- f
+                    while( setContains( sentence, train_set ) ) {
+                        sentence <- sample(3:nfillers,nroles,replace=TRUE)
+                        sentence[r] <- f
+                    }
+
+                    train_set[cur_row,] <- sentence
+                    cur_row <- cur_row + 1
+                }
+            }
+        }
+    }
+
+    ## Fill any extra non-uniform buffer at the end of the set with random sentences
+    while( cur_row <= size_train ) {
+        ## Make sure we put a unique sentence into the training set
+        sentence <- sample(3:nfillers,nroles,replace=TRUE)
+        while( setContains( sentence, train_set ) ) {
+            sentence <- sample(3:nfillers,nroles,replace=TRUE)
+        }
+
+        train_set[cur_row,] <- sentence
+        cur_row <- cur_row + 1
+    }
+
+    ## Build the test set
+    for( i in 1:size_test ) {
+        ## Make sure we put a unique sentence into the test set
+        sentence <- sample(nfillers,nroles,replace=TRUE)
+        while( (!(1 %in% sentence) && !(2 %in% sentence)) || setContains( sentence, test_set ) ) {
+            sentence <- sample(nfillers,nroles,replace=TRUE)
+        }
+        test_set[i,] <- sentence
+    }
+
+    ## Return the training and test sets
+    return(list(
+        train_set = train_set,
+        test_set = test_set
+    ))
+}

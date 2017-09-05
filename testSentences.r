@@ -1,3 +1,4 @@
 source('sentenceSets.r')
-sets <- fullCombinatorial(3,10,200,100)
-print(sets$test)
+novelFiller(3,10,200,100)
+#sets <- fullCombinatorial(3,10,200,100)
+#print(sets$test)
