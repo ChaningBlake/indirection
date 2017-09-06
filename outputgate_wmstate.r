@@ -209,23 +209,20 @@ inputGate <- function(state,f=-1) {
     ## Get NN output unit values
     ## Note that state_wm is for the previous timestep
     ## We will return this to use in the eligibility trace
-    #state_wm <- convolve(state,cur_wm_m)
+    state_wm <- convolve(state,cur_wm_m)
 
     ## This is state_wm convolved with both the go and no go hrrs
-    #state_wm_gono <- apply(gono,2,convolve,state_wm)
-    state_gono <- apply(gono,2,convolve,state)
+    state_wm_gono <- apply(gono,2,convolve,state_wm)
 
     ## Build to matrix of eligility trace vectors that will be returned
     ## for TD updates; default to no go
-    #elig <- replicate(nstripes,state_wm_gono[,2])
-    elig <- replicate(nstripes,state_gono[,2])
+    elig <- replicate(nstripes,state_wm_gono[,2])
     vals <- rep(0.0,nstripes)
     open <- rep(FALSE,nstripes)
 
     ## Determine if open or close value is better
     for( i in 1:nstripes ) {
-        #temp_vals <- (apply(state_wm_gono,2,nndot,W_m[,i]) + bias_m)
-        temp_vals <- (apply(state_gono,2,nndot,W_m[,i]) + bias_m)
+        temp_vals <- (apply(state_wm_gono,2,nndot,W_m[,i]) + bias_m)
         vals[i] <- max(temp_vals)
 
         ## Epsilon soft policy
@@ -234,16 +231,14 @@ inputGate <- function(state,f=-1) {
             ## Pick a random open or close state
             r <- runif(1)
             if( r > .5 ) {
-                #elig[,i] <- state_wm_gono[,1]
-                elig[,i] <- state_gono[,1]
+                elig[,i] <- state_wm_gono[,1]
                 open[i] <- TRUE
                 vals[i] <- temp_vals[1]
             } else {
                 vals[i] <- temp_vals[2]
             }
         } else if( temp_vals[1] > temp_vals[2] ) {
-            #elig[,i] <- state_wm_gono[,1]
-            elig[,i] <- state_gono[,1]
+            elig[,i] <- state_wm_gono[,1]
             open[i] <- TRUE
         }
     }
@@ -313,24 +308,21 @@ outputGate <- function(state) {
     ## Get NN output unit values
     ## Note that state_wm is for the previous timestep
     ## We will return this to use in the eligibility trace
-    #state_wm <- convolve(state,cur_wm_m)
+    state_wm <- convolve(state,cur_wm_m)
 
     ## This is state_wm convolved with both the go and no go hrrs
-    #state_wm_gono <- apply(gono,2,convolve,state_wm)
-    state_gono <- apply(gono,2,convolve,state)
+    state_wm_gono <- apply(gono,2,convolve,state_wm)
 
     ## Build to matrix of eligility trace vectors that will be returned
     ## for TD updates; default to no go
-    #elig <- replicate(nstripes,state_wm_gono[,2])
-    elig <- replicate(nstripes,state_gono[,2])
+    elig <- replicate(nstripes,state_wm_gono[,2])
     vals <- rep(0.0,nstripes)
     open <- rep(FALSE,nstripes)
 
     ## Determine if open or close value is better
     for( i in 1:nstripes ) {
 
-        #temp_vals <- (apply(state_wm_gono,2,nndot,W_o[,i]) + bias_o)
-        temp_vals <- (apply(state_gono,2,nndot,W_o[,i]) + bias_o)
+        temp_vals <- (apply(state_wm_gono,2,nndot,W_o[,i]) + bias_o)
         vals[i] <- max(temp_vals)
 
         ## Epsilon soft policy
@@ -339,16 +331,14 @@ outputGate <- function(state) {
             ## Pick a random open or close state
             r <- runif(1)
             if( r > .5 ) {
-                #elig[,i] <- state_wm_gono[,1]
-                elig[,i] <- state_gono[,1]
+                elig[,i] <- state_wm_gono[,1]
                 open[i] <- TRUE
                 vals[i] <- temp_vals[1]
             } else {
                 vals[i] <- temp_vals[2]
             }
         } else if( temp_vals[1] > temp_vals[2] ) {
-            #elig[,i] <- state_wm_gono[,1]
-            elig[,i] <- state_gono[,1]
+            elig[,i] <- state_wm_gono[,1]
             open[i] <- TRUE
         }
     }
@@ -498,12 +488,12 @@ while( cur_task <= max_tasks ) {
         ## Input gating
         #############################################################################
 
-#        ## Update WM input layer global variables
-#        ig <- inputGate(state)
-#        cur_wm_m <- ig$wm
-#        stripes_m <- ig$stripes_m
-#        stripes_mo <- ig$stripes_mo
-#        f_stripes_m <- ig$f_stripes_m
+        ## Update WM input layer global variables
+        #ig <- inputGate(state)
+        #cur_wm_m <- ig$wm
+        #stripes_m <- ig$stripes_m
+        #stripes_mo <- ig$stripes_mo
+        #f_stripes_m <- ig$f_stripes_m
 
         #############################################################################
         ## Output gating
@@ -524,13 +514,13 @@ while( cur_task <= max_tasks ) {
         ## Neural network and TD training for this trial
         #############################################################################
 
-#        ## INPUT GATE
-#        error <- (reward + gamma_m * ig$vals) - prev_val_m
-#        for( i in 1:nstripes ) {
-#            W_m[,i] <- W_m[,i] + lrate_m * error[i] * elig_m[,i]
-#            elig_m[,i] <- cnorm(lambda_m * elig_m[,i] + ig$elig[,i])
-#        }
-#        prev_val_m <- ig$vals 
+        ## INPUT GATE
+        #error <- (reward + gamma_m * ig$vals) - prev_val_m
+        #for( i in 1:nstripes ) {
+            #W_m[,i] <- W_m[,i] + lrate_m * error[i] * elig_m[,i]
+            #elig_m[,i] <- cnorm(lambda_m * elig_m[,i] + ig$elig[,i])
+        #}
+        #prev_val_m <- ig$vals 
 
         ## OUTPUT GATE
         error <- (reward + gamma_o * og$vals) - prev_val_o
@@ -585,8 +575,8 @@ while( cur_task <= max_tasks ) {
     ## Output prints
     #############################################################################
 
-    if( FALSE ) {
-    #if( cur_task %% 200 == 0 ) {
+    #if( FALSE ) {
+    if( cur_task %% 200 == 0 ) {
         cat(sprintf('Tasks Complete: %d\n',cur_task))
         cat(sprintf('Block Accuracy: %.2f\n',(block_tasks_correct/200)*100))
 
@@ -662,7 +652,7 @@ while( cur_task <= max_tasks ) {
 
 ## Print final results
 #cat(sprintf('%d\n',cur_task))
-#cat(sprintf('Final Block Accuracy: %.2f\n',(block_tasks_correct/200)*100))
+cat(sprintf('Final Block Accuracy: %.2f\n',(block_tasks_correct/200)*100))
 
 #############################################################################
 ## Generalization Test
@@ -717,6 +707,6 @@ if(TRUE) {
     }
 
     ## Print final results
-    #cat(sprintf('Generalization Accuracy: %d\n',novel_tasks_correct))
-    cat(sprintf('%d\n',novel_tasks_correct))
+    cat(sprintf('Generalization Accuracy: %d\n',novel_tasks_correct))
+    #cat(sprintf('%d\n',novel_tasks_correct))
 } ## End generalization test
