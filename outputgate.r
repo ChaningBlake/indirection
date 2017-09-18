@@ -6,7 +6,6 @@
 ##
 ## In this version OG sees WM after it has been update by IG within a timestep.
 ## This version uses a NN to learn action choice, just like the IG model.
-## The 'op' signal for store or retrieve has been removed in this version.
 ##
 #############################################################################
 
@@ -76,7 +75,7 @@ use_sids_output <- args[which(argnames=='use_sids_output')] == 'T'
 
 ## Op code vectors
 ## To index: [,1] for store, [,2] for retrieve
-#ops <- replicate(2,hrr(n,normalized=TRUE))
+ops <- replicate(2,hrr(n,normalized=TRUE))
 
 ## Op code vectors
 ## To index: [,1] go, [,2] no go 
@@ -185,12 +184,12 @@ selectAction <- function() {
 #############################################################################
 getState <- function(o,r) {
     ## Encode state (role,op)
-    #if( state_cd == 'C' ) {
-    #    state <- convolve(ops[,o],roles[,r])
-    #} else {
-    #    state <- cnorm(ops[,o] + roles[,r])
-    #}
-    state <- roles[,r]
+    if( state_cd == 'C' ) {
+        state <- convolve(ops[,o],roles[,r])
+    } else {
+        state <- cnorm(ops[,o] + roles[,r])
+    }
+    #state <- roles[,r]
     return (state)
 }
 
@@ -498,12 +497,12 @@ while( cur_task <= max_tasks ) {
         ## Input gating
         #############################################################################
 
-#        ## Update WM input layer global variables
-#        ig <- inputGate(state)
-#        cur_wm_m <- ig$wm
-#        stripes_m <- ig$stripes_m
-#        stripes_mo <- ig$stripes_mo
-#        f_stripes_m <- ig$f_stripes_m
+        ## Update WM input layer global variables
+        ig <- inputGate(state)
+        cur_wm_m <- ig$wm
+        stripes_m <- ig$stripes_m
+        stripes_mo <- ig$stripes_mo
+        f_stripes_m <- ig$f_stripes_m
 
         #############################################################################
         ## Output gating
@@ -524,13 +523,13 @@ while( cur_task <= max_tasks ) {
         ## Neural network and TD training for this trial
         #############################################################################
 
-#        ## INPUT GATE
-#        error <- (reward + gamma_m * ig$vals) - prev_val_m
-#        for( i in 1:nstripes ) {
-#            W_m[,i] <- W_m[,i] + lrate_m * error[i] * elig_m[,i]
-#            elig_m[,i] <- cnorm(lambda_m * elig_m[,i] + ig$elig[,i])
-#        }
-#        prev_val_m <- ig$vals 
+        ## INPUT GATE
+        error <- (reward + gamma_m * ig$vals) - prev_val_m
+        for( i in 1:nstripes ) {
+            W_m[,i] <- W_m[,i] + lrate_m * error[i] * elig_m[,i]
+            elig_m[,i] <- cnorm(lambda_m * elig_m[,i] + ig$elig[,i])
+        }
+        prev_val_m <- ig$vals 
 
         ## OUTPUT GATE
         error <- (reward + gamma_o * og$vals) - prev_val_o
@@ -585,8 +584,8 @@ while( cur_task <= max_tasks ) {
     ## Output prints
     #############################################################################
 
-    if( FALSE ) {
-    #if( cur_task %% 200 == 0 ) {
+    #if( FALSE ) {
+    if( cur_task %% 200 == 0 ) {
         cat(sprintf('Tasks Complete: %d\n',cur_task))
         cat(sprintf('Block Accuracy: %.2f\n',(block_tasks_correct/200)*100))
 
@@ -604,53 +603,53 @@ while( cur_task <= max_tasks ) {
         cat('\n')
     }
 
-    if( FALSE ) {
-    #if( cur_task %% 200 == 0 ) {
-        ## For each stripe output open and close values
-        for( s in 1:nstripes ) {
-            for( r in 1:nroles ) {
-                for( o in 1:2 ) {
-                    if( state_cd == 'C' ) {
-                        #state_wm <- convolve(convolve(ops[,o],roles[,r]),cur_wm_m)
-                        state_wm <- convolve(roles[,r],cur_wm_m)
-                    } else {
-                        #state_wm <- convolve(cnorm(ops[,o] + roles[,r]),cur_wm_m)
-                        state_wm <- convolve(roles[,r],cur_wm_m)
-                    }
-                    for( g in 1:2 ) {
-                        cat(sprintf('%.2f',nndot(W_m[,s],convolve(state_wm,gono[,g]))+bias_m))
-                        if( s != nstripes || o != 2 || r != nroles || g != 2 )
-                            cat(',')
-                    }
-                }
-            }
-        }
-        cat('\n')
-    }
+#    if( FALSE ) {
+#    #if( cur_task %% 200 == 0 ) {
+#        ## For each stripe output open and close values
+#        for( s in 1:nstripes ) {
+#            for( r in 1:nroles ) {
+#                for( o in 1:2 ) {
+#                    if( state_cd == 'C' ) {
+#                        #state_wm <- convolve(convolve(ops[,o],roles[,r]),cur_wm_m)
+#                        state_wm <- convolve(roles[,r],cur_wm_m)
+#                    } else {
+#                        #state_wm <- convolve(cnorm(ops[,o] + roles[,r]),cur_wm_m)
+#                        state_wm <- convolve(roles[,r],cur_wm_m)
+#                    }
+#                    for( g in 1:2 ) {
+#                        cat(sprintf('%.2f',nndot(W_m[,s],convolve(state_wm,gono[,g]))+bias_m))
+#                        if( s != nstripes || o != 2 || r != nroles || g != 2 )
+#                            cat(',')
+#                    }
+#                }
+#            }
+#        }
+#        cat('\n')
+#    }
 
-    if( FALSE ) {
-    #if( cur_task %% 200 == 0 ) {
-        ## For each stripe output open and close values
-        for( s in 1:nstripes ) {
-            for( r in 1:nroles ) {
-                for( o in 1:2 ) {
-                    if( state_cd == 'C' ) {
-                        #state_wm <- convolve(convolve(ops[,o],roles[,r]),cur_wm_m)
-                        state_wm <- convolve(roles[,r],cur_wm_m)
-                    } else {
-                        #state_wm <- convolve(cnorm(ops[,o] + roles[,r]),cur_wm_m)
-                        state_wm <- convolve(roles[,r],cur_wm_m)
-                    }
-                    for( g in 1:2 ) {
-                        cat(sprintf('%.2f',nndot(W_o[,s],convolve(state_wm,gono[,g]))+bias_o))
-                        if( s != nstripes || o != 2 || r != nroles || g != 2 )
-                            cat(',')
-                    }
-                }
-            }
-        }
-        cat('\n')
-    }
+#    if( FALSE ) {
+#    #if( cur_task %% 200 == 0 ) {
+#        ## For each stripe output open and close values
+#        for( s in 1:nstripes ) {
+#            for( r in 1:nroles ) {
+#                for( o in 1:2 ) {
+#                    if( state_cd == 'C' ) {
+#                        #state_wm <- convolve(convolve(ops[,o],roles[,r]),cur_wm_m)
+#                        state_wm <- convolve(roles[,r],cur_wm_m)
+#                    } else {
+#                        #state_wm <- convolve(cnorm(ops[,o] + roles[,r]),cur_wm_m)
+#                        state_wm <- convolve(roles[,r],cur_wm_m)
+#                    }
+#                    for( g in 1:2 ) {
+#                        cat(sprintf('%.2f',nndot(W_o[,s],convolve(state_wm,gono[,g]))+bias_o))
+#                        if( s != nstripes || o != 2 || r != nroles || g != 2 )
+#                            cat(',')
+#                    }
+#                }
+#            }
+#        }
+#        cat('\n')
+#    }
 
     #############################################################################
     ## Task wrapup
@@ -662,7 +661,7 @@ while( cur_task <= max_tasks ) {
 
 ## Print final results
 #cat(sprintf('%d\n',cur_task))
-#cat(sprintf('Final Block Accuracy: %.2f\n',(block_tasks_correct/200)*100))
+cat(sprintf('Final Block Accuracy: %.2f\n',(block_tasks_correct/200)*100))
 
 #############################################################################
 ## Generalization Test
@@ -680,13 +679,16 @@ if(TRUE) {
         ## We aren't training here so no need to permute
         s_f <- sets$test_set[i,]
 
+        ## Permute the sentence so that roles are not always presented in the same order
+        p <- sample(nroles,nroles,replace=FALSE)
+
         ## Do a 'Store' for each filler
         ## Action selection can be skipped here
         ## Do not do any training
         for( t in 1:nroles ) {
-            state <- getState(1,t)
+            state <- getState(1,p[t])
 
-            ig <- inputGate(state,s_f[t])
+            ig <- inputGate(state,s_f[p[t]])
             cur_wm_m <- ig$wm
             stripes_m <- ig$stripes_m
             stripes_mo <- ig$stripes_mo
@@ -697,16 +699,27 @@ if(TRUE) {
             f_stripes_o <- og$f_stripes_o
         }
 
-        ## Do a 'Retrieve' output gate, and select action
+        ## Do a 'Retrieve' input gate, output gate, and select action
+        p <- sample(nroles,nqueries,replace=FALSE)
         for( t in 1:nqueries ) {
-            state <- getState(2,t)
+
+            ## We can only query role 1 for the FC test
+            ## consequently, nqueries must be set to 1
+            state <- if(args[which(argnames=='gen_test')] == 'FC') getState(2,1) else getState(2,p[t])
+            answer <- if(args[which(argnames=='gen_test')] == 'FC') s_f[1] else s_f[p[t]] 
+
+            ig <- inputGate(state)
+            cur_wm_m <- ig$wm
+            stripes_m <- ig$stripes_m
+            stripes_mo <- ig$stripes_mo
+            f_stripes_m <- ig$f_stripes_m
 
             og <- outputGate(state)
             cur_wm_o <- og$wm
             f_stripes_o <- og$f_stripes_o
 
             ac <- selectAction()
-            if( ac$action == s_f[t] )
+            if( ac$action == answer )
                 correct_trial[t] <- 1
         }
 
@@ -717,6 +730,6 @@ if(TRUE) {
     }
 
     ## Print final results
-    #cat(sprintf('Generalization Accuracy: %d\n',novel_tasks_correct))
-    cat(sprintf('%d\n',novel_tasks_correct))
+    cat(sprintf('Generalization Accuracy: %d\n',novel_tasks_correct))
+    #cat(sprintf('%d\n',novel_tasks_correct))
 } ## End generalization test

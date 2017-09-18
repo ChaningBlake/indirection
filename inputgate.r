@@ -4,10 +4,6 @@
 ## Role/filler recall task
 ## 2017 Mike Jovanovich
 ##
-## Actions must be learned for this model, since there is no output gating.
-## The signal to drive action choice is all of WM, along with a prompt for the role.
-## The 'op' signal for store or retrieve has been removed in this version.
-##
 #############################################################################
 
 ## Usage
@@ -73,7 +69,7 @@ sids <- replicate(nstripes,hrr(n,normalized=TRUE))
 
 ## Op code vectors
 ## To index: [,1] for store, [,2] for retrieve
-#ops <- replicate(2,hrr(n,normalized=TRUE))
+ops <- replicate(2,hrr(n,normalized=TRUE))
 
 ## Op code vectors
 ## To index: [,1] go, [,2] no go 
@@ -165,17 +161,11 @@ softmax_select <- function(x) {
 inputGate <- function(o,r,f=-1) {
 
     ## Encode state (role,op)
-    #if( state_cd == 'C' ) {
-    #    state <- convolve(ops[,o],roles[,r])
-    #} else {
-    #    state <- cnorm(ops[,o] + roles[,r])
-    #}
-    state <- roles[,r]
-
-    ## Get NN output unit values
-    ## Note that state_wm is for the previous timestep
-    ## We will return this to use in the eligibility trace
-    #state_wm <- convolve(state,cur_wm)
+    if( state_cd == 'C' ) {
+        state <- convolve(ops[,o],roles[,r])
+    } else {
+        state <- cnorm(ops[,o] + roles[,r])
+    }
 
     ## This is state_wm convolved with both the go and no go hrrs
     #state_wm_gono <- apply(gono,2,convolve,state_wm)
@@ -228,6 +218,7 @@ inputGate <- function(o,r,f=-1) {
                 } else {
                     stripes_m[,i] <- cnorm(fillers[,f]+sids[,i])
                 }
+                #stripes_m[,i] <- fillers[,f]
                 f_stripes_m[i] <- f_fillers[f]
             }
         }
@@ -365,11 +356,11 @@ while( cur_task <= max_tasks ) {
         ## Input gating
         #############################################################################
 
-#        ## Update WM input layer global variables
-#        ig <- inputGate(2,s_r[req])
-#        cur_wm <- ig$wm
-#        stripes_m <- ig$stripes_m
-#        f_stripes_m <- ig$f_stripes_m
+        ## Update WM input layer global variables
+        ig <- inputGate(2,s_r[p[t]])
+        cur_wm <- ig$wm
+        stripes_m <- ig$stripes_m
+        f_stripes_m <- ig$f_stripes_m
 
         #############################################################################
         ## Action selection
@@ -383,13 +374,13 @@ while( cur_task <= max_tasks ) {
         ## Neural network and TD training for this trial
         #############################################################################
 
-#        ## INPUT GATE
-#        error <- (reward + gamma_m * ig$vals) - prev_val_m
-#        for( i in 1:nstripes ) {
-#            W_m[,i] <- W_m[,i] + lrate_m * error[i] * elig_m[,i]
-#            elig_m[,i] <- cnorm(lambda_m * elig_m[,i] + ig$elig[,i])
-#        }
-#        prev_val_m <- ig$vals 
+        ## INPUT GATE
+        error <- (reward + gamma_m * ig$vals) - prev_val_m
+        for( i in 1:nstripes ) {
+            W_m[,i] <- W_m[,i] + lrate_m * error[i] * elig_m[,i]
+            elig_m[,i] <- cnorm(lambda_m * elig_m[,i] + ig$elig[,i])
+        }
+        prev_val_m <- ig$vals 
 
         ## ACTION SELECTION
         ## This is not TD learning - just a NN
@@ -430,8 +421,8 @@ while( cur_task <= max_tasks ) {
     ## Output prints
     #############################################################################
 
-    if( FALSE ) {
-    #if( cur_task %% 200 == 0 ) {
+    #if( FALSE ) {
+    if( cur_task %% 200 == 0 ) {
         cat(sprintf('Tasks Complete: %d\n',cur_task))
         cat(sprintf('Block Accuracy: %.2f\n',(block_tasks_correct/200)*100))
 
@@ -446,29 +437,29 @@ while( cur_task <= max_tasks ) {
         cat('\n')
     }
 
-    if( FALSE ) {
-    #if( cur_task %% 200 == 0 ) {
-        ## For each stripe output open and close values
-        for( s in 1:nstripes ) {
-            for( r in 1:nroles ) {
-                for( o in 1:2 ) {
-                    if( state_cd == 'C' ) {
-                        #state_wm <- convolve(convolve(ops[,o],roles[,r]),cur_wm)
-                        state_wm <- convolve(roles[,r],cur_wm)
-                    } else {
-                        #state_wm <- convolve(cnorm(ops[,o] + roles[,r]),cur_wm)
-                        state_wm <- convolve(roles[,r],cur_wm)
-                    }
-                    for( g in 1:2 ) {
-                        cat(sprintf('%.2f',nndot(W_m[,s],convolve(state_wm,gono[,g]))+bias_m))
-                        if( s != nstripes || o != 2 || r != nroles || g != 2 )
-                            cat(',')
-                    }
-                }
-            }
-        }
-        cat('\n')
-    }
+#    if( FALSE ) {
+#    #if( cur_task %% 200 == 0 ) {
+#        ## For each stripe output open and close values
+#        for( s in 1:nstripes ) {
+#            for( r in 1:nroles ) {
+#                for( o in 1:2 ) {
+#                    if( state_cd == 'C' ) {
+#                        #state_wm <- convolve(convolve(ops[,o],roles[,r]),cur_wm)
+#                        state_wm <- convolve(roles[,r],cur_wm)
+#                    } else {
+#                        #state_wm <- convolve(cnorm(ops[,o] + roles[,r]),cur_wm)
+#                        state_wm <- convolve(roles[,r],cur_wm)
+#                    }
+#                    for( g in 1:2 ) {
+#                        cat(sprintf('%.2f',nndot(W_m[,s],convolve(state_wm,gono[,g]))+bias_m))
+#                        if( s != nstripes || o != 2 || r != nroles || g != 2 )
+#                            cat(',')
+#                    }
+#                }
+#            }
+#        }
+#        cat('\n')
+#    }
 
     #############################################################################
     ## Task wrapup
@@ -480,7 +471,7 @@ while( cur_task <= max_tasks ) {
 
 ## Print final results
 #cat(sprintf('%d\n',cur_task))
-#cat(sprintf('Final Block Accuracy: %.2f\n',(block_tasks_correct/200)*100))
+cat(sprintf('Final Block Accuracy: %.2f\n',(block_tasks_correct/200)*100))
 
 #############################################################################
 ## Generalization Test
@@ -498,21 +489,37 @@ if(TRUE) {
         ## We aren't training here so no need to permute
         s_f <- sets$test_set[i,]
 
+        ## Permute the sentence so that roles are not always presented in the same order
+        p <- sample(nroles,nroles,replace=FALSE)
+
         ## Do a 'Store' for each filler
         ## Action selection can be skipped here
         ## Do not do any training
         for( t in 1:nroles ) {
             ## Input Gate
-            ig <- inputGate(1,s_r[t],s_f[t])
+            ig <- inputGate(1,s_r[p[t]],s_f[p[t]])
             cur_wm <- ig$wm
             stripes_m <- ig$stripes_m
             f_stripes_m <- ig$f_stripes_m
         }
 
-        ## We only need to select an action in this case
+        ## Do a 'Retrieve'
+        ## Select action
+        p <- sample(nroles,nqueries,replace=FALSE)
         for( t in 1:nqueries ) {
-            ac <- selectAction(s_r[t])
-            if( ac$action == s_f[t] )
+
+            ## We can only query role 1 for the FC test
+            ## consequently, nqueries must be set to 1
+            query <- if(args[which(argnames=='gen_test')] == 'FC') 1 else s_r[p[t]] 
+            answer <- if(args[which(argnames=='gen_test')] == 'FC') s_f[1] else s_f[p[t]] 
+
+            ig <- inputGate(2,query)
+            cur_wm <- ig$wm
+            stripes_m <- ig$stripes_m
+            f_stripes_m <- ig$f_stripes_m
+
+            ac <- selectAction(query)
+            if( ac$action == answer )
                 correct_trial[t] <- 1
         }
 
@@ -523,6 +530,6 @@ if(TRUE) {
     }
 
     ## Print final results
-    #cat(sprintf('Generalization Accuracy: %d\n',novel_tasks_correct))
-    cat(sprintf('%d\n',novel_tasks_correct))
+    cat(sprintf('Generalization Accuracy: %d\n',novel_tasks_correct))
+    #cat(sprintf('%d\n',novel_tasks_correct))
 } ## End generalization test
